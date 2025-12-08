@@ -18,3 +18,14 @@ class Logistic(models.Model):
     address = models.CharField(max_length=255)
     delivery_date = models.DateTimeField(null=True, blank=True)
     serialized_products = models.JSONField(default=list)
+
+
+class OperationLog(models.Model):
+    OPERATION_CHOICES = {
+        "SHIPMENT_SPLIT": "SHIPMENT_SPLIT"
+    }
+
+    operation = models.CharField(choices=OPERATION_CHOICES)
+    details = models.JSONField()
+    order = models.ForeignKey(Order, related_name="operation_logs", on_delete=models.DO_NOTHING)
+

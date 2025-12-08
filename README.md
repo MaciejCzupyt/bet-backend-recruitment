@@ -5,3 +5,6 @@
 
 Zdarza się, że klient kontaktuje się z nami z prośbą o wysyłkę części produktów na inny adres.
 
+# Changelog
+
+- 
