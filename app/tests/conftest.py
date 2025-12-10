@@ -2,11 +2,15 @@ import pytest
 from rest_framework.test import APIClient
 
 from shop_system.models import Product, Order
+from django.contrib.auth.models import User
 
 
 @pytest.fixture
-def client():
-    return APIClient()
+def client(db):
+    client = APIClient()
+    user = User.objects.create_user(username="test", password="test")
+    client.force_authenticate(user=user)
+    return client
 
 
 @pytest.fixture

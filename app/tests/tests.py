@@ -22,7 +22,7 @@ def test_split_shipment_creates_new_logistic_and_operationlog(client, order_with
     assert logistic.serialized_products == [product_2.id]
 
     operationlog = OperationLog.objects.get(order=order)
-    assert operationlog.details["user"] == "AnonymousUser"
+    assert operationlog.details["user"] == "test"
     assert operationlog.details["product_ids"] == [product_2.id]
     assert operationlog.details["source_addresses"] == [order.address]
     assert operationlog.details["target_address"] == new_address
@@ -31,7 +31,7 @@ def test_split_shipment_creates_new_logistic_and_operationlog(client, order_with
 def test_split_shipment_assigns_correct_user(client, order_with_products):
     order, product_1, product_2 = order_with_products
 
-    user = User.objects.create(username="test", password="test")
+    user = User.objects.create(username="correct_user", password="test")
     client.force_authenticate(user=user)
 
     new_address = "New Address"
@@ -46,7 +46,7 @@ def test_split_shipment_assigns_correct_user(client, order_with_products):
     assert response.status_code == 200
 
     operationlog = OperationLog.objects.get(order=order)
-    assert operationlog.details["user"] == "test"
+    assert operationlog.details["user"] == "correct_user"
 
 
 def test_incorrect_request_returns_400(client, order_with_products):
