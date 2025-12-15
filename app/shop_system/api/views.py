@@ -1,16 +1,15 @@
-import datetime
-import logging
-
 from django.utils import timezone
-from rest_framework.generics import get_object_or_404
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 # The Unresolved reference 'shop_system' error seems to be incorrect
 from shop_system.api.serializers import SplitShipmentSerializer
 from ..models import Order, Logistic, OperationLog
 
+from django.db import transaction
+
 
 @api_view(["POST"])
+@transaction.atomic
 def split_shipment(request, order_id):
     # validate request, throw 400 for bad data
     serializer = SplitShipmentSerializer(data=request.data)
@@ -21,63 +20,80 @@ def split_shipment(request, order_id):
     address = serializer.validated_data["address"]
 
     # verify if order exists or 404
-    order = get_object_or_404(Order, id=order_id)
+    order = (
+        Order.objects
+        .prefetch_related("products")
+        .filter(id=order_id)
+        .first()
+    )
+    if not order:
+        return Response({"message": "Order not found"}, status=404)
 
     # flag for future use in case a request is made to move the products to the same address as the original order
     same_address = (address == order.address)
 
-    """
-    TODO this fragment might be detrimental
-    A user could request a ship_splitment for a product and then change his mind and request it to be delivered to the
-    original address again
-    """
-    # if order.address == address:
-    #     return Response({"message": "New address cannot be the same as the source address"}, status=400)
-
-    """
-    To figure out exactly where each product could've come from due to the potential of multiple logistics objects
-    existing, a new variable is created that tracks each address. If it turns out that all the products originated from
-    additionally created logistic objects and none from the original order object, then the source addresses shouldn't
-    mention the original source address.
-    """
-    source_addresses = [order.address]
-    address_counter = len(product_ids)
-
-    # verify if products exist in given order or 404
-    if not order.products.filter(id__in=product_ids).count() == len(product_ids):
+    # # verify if products exist in given order or 404
+    order_product_ids = {p.id for p in order.products.all()}
+    if not set(product_ids).issubset(order_product_ids):
         return Response({"message": "Order does not contain the specified products"}, status=404)
 
     # check if attempting to move products that are already set to move to specified address
-    related_logistic = Logistic.objects.filter(order=order, address=address).first()
+    logistics = list(Logistic.objects.filter(order=order))
+
+    # remove given product_ids from existing logistic objects tied to this order
+    if len(logistics) == 0 and same_address:
+        return Response(
+            {"message": "The products belong to the same address as the original order"},
+            status=400
+        )
+
+    related_logistic = next((l for l in logistics if l.address == address), None)
     if related_logistic:
         if set(product_ids) & set(related_logistic.serialized_products):
             return Response({
                 "message": "Some of the products are already headed towards the specified address"
             }, status=400)
 
-    # remove given product_ids from existing logistic objects tied to this order
-    related_logistics = Logistic.objects.filter(order=order)
-    if related_logistics is None and same_address:
-        return Response({"message": "The products belong to the same address as the original order"}, status=400)
-    for logistic in related_logistics:
+    """
+    To figure out exactly where each product could've come from due to the potential of multiple logistics objects
+    existing, a new variable is created that tracks each address. If it turns out that all the products originated
+    from additionally created logistic objects and none from the original order object, then the source addresses
+    shouldn't mention the original source address.
+    """
+    source_addresses = [order.address]
+    address_counter = len(product_ids)
+
+    # used for batch update and delete
+    to_delete = []
+    to_update = []
+
+    for logistic in logistics:
         old_products = logistic.serialized_products
         new_products = [product_id for product_id in old_products if product_id not in product_ids]
+
         if old_products != new_products:
             # add logistic address as a source address
             source_addresses.append(logistic.address)
             address_counter = address_counter - (len(old_products) - len(new_products))
             if new_products:
+                # queue update logistic
                 logistic.serialized_products = new_products
-                logistic.save()
+                to_update.append(logistic)
             else:
-                # delete logistic with no products
-                logistic.delete()
+                # queue logistic with no products for deletion
+                to_delete.append(logistic)
+
+    if to_update:
+        Logistic.objects.bulk_update(to_update, ['serialized_products'])
+    if to_delete:
+        Logistic.objects.filter(id__in=[l.id for l in to_delete]).delete()
 
     # remove original order address if all products came from different logistic objects
     if address_counter == 0:
         source_addresses.remove(order.address)
     elif same_address:
-        return Response({"message": "Some of the products belong to the same address as the original order"}, status=400)
+        return Response({"message": "Some of the products belong to the same address as the original order"},
+                        status=400)
 
     # check for logistic with existing address, create new one if none exist
     if not same_address:
@@ -97,7 +113,7 @@ def split_shipment(request, order_id):
     OperationLog.objects.create(
         operation="SHIPMENT_SPLIT",
         details={
-            "user": getattr(request.user, "username", None) or "AnonymousUser",
+            "user": getattr(request.user, "username", None),
             "timestamp": timezone.now().isoformat(),
             "product_ids": product_ids,
             "source_addresses": source_addresses,

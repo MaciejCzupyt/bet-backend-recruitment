@@ -1,7 +1,31 @@
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 # incorrect Unresolved reference errors
 from shop_system.models import Logistic, OperationLog
 from django.contrib.auth.models import User
+from django.db import connection
+
+
+def test_amount_of_queries(client, order_with_products):
+    order, product_1, product_2 = order_with_products
+    new_address = "New Address"
+
+    payload = {
+        "product_ids": [product_1.id],
+        "address": new_address
+    }
+
+    url = reverse("shop_system:split-shipment", kwargs={"order_id": order.id})
+    with CaptureQueriesContext(connection) as ctx:
+        response = client.post(url, payload, format="json")
+
+    print("TOTAL QUERIES:", len(ctx.captured_queries))
+
+    assert response.status_code == 200
+
+    # 11/12 13:17 - 9 queries
+    # 12/12 20:10 - 8 queries (optimized code)
+    # 15/12 16:03 - 10 queries (added transaction support)
 
 
 def test_split_shipment_creates_new_logistic_and_operationlog(client, order_with_products):
@@ -98,7 +122,6 @@ def test_non_existing_order_returns_404(client, order_with_products, another_ord
         "address": "new address"
     }
 
-    # TODO add a way to make sure that the fake order_id does not exist
     url = reverse("shop_system:split-shipment", kwargs={"order_id": "2137"})
     response = client.post(url, payload, format="json")
 
