@@ -92,14 +92,14 @@ def test_missing_address_returns_400(client, order_with_products):
 
 def test_non_existing_order_returns_404(client, order_with_products, another_order_with_products):
     order_1, product_1, product_2 = order_with_products
-    order_2, product_3, product_4 = another_order_with_products
 
     payload = {
         "product_ids": [product_2.id],
         "address": "new address"
     }
 
-    url = reverse("shop_system:split-shipment", kwargs={"order_id": order_2.id})
+    # TODO add a way to make sure that the fake order_id does not exist
+    url = reverse("shop_system:split-shipment", kwargs={"order_id": "2137"})
     response = client.post(url, payload, format="json")
 
     assert response.status_code == 404
