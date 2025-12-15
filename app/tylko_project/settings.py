@@ -35,7 +35,6 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # "shop_system.apps.ShopSystemConfig",
     "rest_framework",
     "drf_yasg",
     "shop_system",
