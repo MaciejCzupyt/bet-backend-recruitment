@@ -7,4 +7,11 @@ Zdarza się, że klient kontaktuje się z nami z prośbą o wysyłkę części p
 
 # Changelog
 
-- 
+- Added serializers.py for split shipment request validation and serialization
+
+- Implemented the split_shipment endpoint, including:
+  - robust error handling
+  - transactional concurrency support
+  - handling of certain edge cases
+- Introduced the OperationLog model and added constraints to existing models
+- Added comprehensive test coverage with new tests and fixtures
